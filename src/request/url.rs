@@ -54,11 +54,11 @@ pub struct Url {
 impl Url {
     /// Create a URL from a string.
     ///
-    /// The input must be a valid URL in a relative scheme for this to succeed.
+    /// The input must be a valid URL with a special scheme for this to succeed.
     ///
-    /// HTTP and HTTPS are relative schemes.
+    /// HTTP and HTTPS are special schemes.
     ///
-    /// See: http://url.spec.whatwg.org/#relative-scheme
+    /// See: http://url.spec.whatwg.org/#special-scheme
     pub fn parse(input: &str) -> Result<Url, String> {
         // Parse the string using rust-url, then convert.
         match url::Url::parse(input) {
@@ -69,7 +69,7 @@ impl Url {
 
     /// Create a `Url` from a `rust-url` `Url`.
     pub fn from_generic_url(raw_url: url::Url) -> Result<Url, String> {
-        // Create an Iron URL by extracting the relative scheme data.
+        // Create an Iron URL by extracting the special scheme data.
         match raw_url.scheme_data {
             SchemeData::Relative(data) => {
                 // Extract the port as a 16-bit unsigned integer.
@@ -81,7 +81,7 @@ impl Url {
                     None => {
                         match whatwg_scheme_type_mapper(&raw_url.scheme) {
                             SchemeType::Relative(port) => port,
-                            _ => return Err(format!("Invalid relative scheme: `{}`",
+                            _ => return Err(format!("Invalid special scheme: `{}`",
                                                     raw_url.scheme))
                         }
                     }
@@ -111,7 +111,7 @@ impl Url {
                     fragment: raw_url.fragment
                 })
             },
-            _ => Err(format!("Not a relative scheme: `{}`", raw_url.scheme))
+            _ => Err(format!("Not a special scheme: `{}`", raw_url.scheme))
         }
     }
 
@@ -123,10 +123,10 @@ impl Url {
             scheme: self.scheme,
             scheme_data: SchemeData::Relative(
                 RelativeSchemeData {
-                    username: self.username.unwrap_or("".to_string()),
+                    username: self.username.unwrap_or(String::new()),
                     password: self.password,
                     host: self.host,
-                    port: Some(self.port),
+                    port: if Some(self.port) != default_port { Some(self.port) } else { None },
                     default_port: default_port,
                     path: self.path
                 }
@@ -145,7 +145,7 @@ impl fmt::Display for Url {
 
         // Write the user info.
         try!(write!(formatter, "{}", UserInfoFormatter {
-            username: self.username.as_ref().map(|s| &**s).unwrap_or(""),
+            username: self.username.as_ref().map_or("", |s| &**s),
             password: self.password.as_ref().map(|s| &**s)
         }));
 
@@ -203,9 +203,27 @@ mod test {
     }
 
     #[test]
+    fn test_not_empty_username() {
+        let user = Url::parse("http://john:pass@example.com").unwrap().username;
+        assert_eq!(user.unwrap(), "john");
+
+        let user = Url::parse("http://john:@example.com").unwrap().username;
+        assert_eq!(user.unwrap(), "john");
+    }
+
+    #[test]
     fn test_empty_password() {
         assert!(Url::parse("http://michael@example.com").unwrap().password.is_none());
         assert!(Url::parse("http://:@example.com").unwrap().password.is_none());
+    }
+
+    #[test]
+    fn test_not_empty_password() {
+        let pass = Url::parse("http://michael:pass@example.com").unwrap().password;
+        assert_eq!(pass.unwrap(), "pass");
+
+        let pass = Url::parse("http://:pass@example.com").unwrap().password;
+        assert_eq!(pass.unwrap(), "pass");
     }
 
     #[test]

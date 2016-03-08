@@ -2,6 +2,8 @@
 //! `Iron` library.
 
 use std::net::{ToSocketAddrs, SocketAddr};
+use std::time::Duration;
+#[cfg(feature = "ssl")]
 use std::path::PathBuf;
 
 pub use hyper::server::Listening;
@@ -26,10 +28,41 @@ pub struct Iron<H> {
     pub handler: H,
 
     /// Once listening, the local address that this server is bound to.
-    pub addr: Option<SocketAddr>,
+    addr: Option<SocketAddr>,
 
     /// Once listening, the protocol used to serve content.
-    pub protocol: Option<Protocol>
+    protocol: Option<Protocol>
+}
+
+/// A settings struct containing a set of timeouts which can be applied to a server.
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub struct Timeouts {
+    /// Controls the timeout for keep alive connections.
+    ///
+    /// The default is `Some(Duration::from_secs(5))`.
+    ///
+    /// NOTE: Setting this to None will have the effect of turning off keep alive.
+    pub keep_alive: Option<Duration>,
+
+    /// Controls the timeout for reads on existing connections.
+    ///
+    /// The default is `Some(Duration::from_secs(30))`
+    pub read: Option<Duration>,
+
+    /// Controls the timeout for writes on existing conncetions.
+    ///
+    /// The default is `Some(Duration::from_secs(1))`
+    pub write: Option<Duration>
+}
+
+impl Default for Timeouts {
+    fn default() -> Self {
+        Timeouts {
+            keep_alive: Some(Duration::from_secs(5)),
+            read: Some(Duration::from_secs(30)),
+            write: Some(Duration::from_secs(1))
+        }
+    }
 }
 
 /// Protocol used to serve content. Future versions of Iron may add new protocols
@@ -39,6 +72,7 @@ pub enum Protocol {
     /// Plaintext HTTP/1
     Http,
     /// HTTP/1 over SSL/TLS
+    #[cfg(feature = "ssl")]
     Https {
         /// Path to SSL certificate file
         certificate: PathBuf,
@@ -52,6 +86,7 @@ impl Protocol {
     pub fn name(&self) -> &'static str {
         match *self {
             Protocol::Http => "http",
+            #[cfg(feature = "ssl")]
             Protocol::Https { .. } => "https"
         }
     }
@@ -64,14 +99,17 @@ impl<H: Handler> Iron<H> {
     /// This consumes the Iron instance, but does the listening on
     /// another task, so is not blocking.
     ///
-    /// Defaults to a threadpool of size `2 * num_cpus`.
+    /// The thread returns a guard that will automatically join with the parent
+    /// once it is dropped, blocking until this happens.
+    ///
+    /// Defaults to a threadpool of size `8 * num_cpus`.
     ///
     /// ## Panics
     ///
     /// Panics if the provided address does not parse. To avoid this
     /// call `to_socket_addrs` yourself and pass a parsed `SocketAddr`.
-    pub fn http<A: ToSocketAddrs + 'static>(self, addr: A) -> HttpResult<Listening> {
-        self.listen_with(addr, 2 * ::num_cpus::get(), Protocol::Http)
+    pub fn http<A: ToSocketAddrs>(self, addr: A) -> HttpResult<Listening> {
+        self.listen_with(addr, 8 * ::num_cpus::get(), Protocol::Http, None)
     }
 
     /// Kick off the server process using the HTTPS protocol.
@@ -80,16 +118,20 @@ impl<H: Handler> Iron<H> {
     /// This consumes the Iron instance, but does the listening on
     /// another task, so is not blocking.
     ///
-    /// Defaults to a threadpool of size `2 * num_cpus`.
+    /// The thread returns a guard that will automatically join with the parent
+    /// once it is dropped, blocking until this happens.
+    ///
+    /// Defaults to a threadpool of size `8 * num_cpus`.
     ///
     /// ## Panics
     ///
     /// Panics if the provided address does not parse. To avoid this
     /// call `to_socket_addrs` yourself and pass a parsed `SocketAddr`.
-    pub fn https<A: ToSocketAddrs + 'static>(self, addr: A, certificate: PathBuf, key: PathBuf)
-                                            -> HttpResult<Listening> {
-        self.listen_with(addr, 2 * ::num_cpus::get(),
-                         Protocol::Https { certificate: certificate, key: key })
+    #[cfg(feature = "ssl")]
+    pub fn https<A: ToSocketAddrs>(self, addr: A, certificate: PathBuf, key: PathBuf)
+                                   -> HttpResult<Listening> {
+        self.listen_with(addr, 8 * ::num_cpus::get(),
+                         Protocol::Https { certificate: certificate, key: key }, None)
     }
 
     /// Kick off the server process with X threads.
@@ -98,22 +140,38 @@ impl<H: Handler> Iron<H> {
     ///
     /// Panics if the provided address does not parse. To avoid this
     /// call `to_socket_addrs` yourself and pass a parsed `SocketAddr`.
-    pub fn listen_with<A: ToSocketAddrs + 'static>(mut self, addr: A, threads: usize,
-                                                  protocol: Protocol) -> HttpResult<Listening> {
+    pub fn listen_with<A: ToSocketAddrs>(mut self, addr: A, threads: usize,
+                                         protocol: Protocol,
+                                         timeouts: Option<Timeouts>) -> HttpResult<Listening> {
         let sock_addr = addr.to_socket_addrs()
             .ok().and_then(|mut addrs| addrs.next()).expect("Could not parse socket address.");
 
         self.addr = Some(sock_addr);
-
         self.protocol = Some(protocol.clone());
 
-        let server = match protocol {
-            Protocol::Http => Server::http(self),
-            Protocol::Https { ref certificate, ref key } =>
-                Server::https(self, certificate, key)
-        };
+        match protocol {
+            Protocol::Http => {
+                let mut server = try!(Server::http(sock_addr));
+                let timeouts = timeouts.unwrap_or_default();
+                server.keep_alive(timeouts.keep_alive);
+                server.set_read_timeout(timeouts.read);
+                server.set_write_timeout(timeouts.write);
+                server.handle_threads(self, threads)
+            },
 
-        Ok(try!(server.listen_threads(sock_addr, threads)))
+            #[cfg(feature = "ssl")]
+            Protocol::Https { ref certificate, ref key } => {
+                use hyper::net::Openssl;
+
+                let ssl = try!(Openssl::with_cert_and_key(certificate, key));
+                let mut server = try!(Server::https(sock_addr, ssl));
+                let timeouts = timeouts.unwrap_or_default();
+                server.keep_alive(timeouts.keep_alive);
+                server.set_read_timeout(timeouts.read);
+                server.set_write_timeout(timeouts.write);
+                server.handle_threads(self, threads)
+            }
+        }
     }
 
     /// Instantiate a new instance of `Iron`.
@@ -123,44 +181,40 @@ impl<H: Handler> Iron<H> {
     pub fn new(handler: H) -> Iron<H> {
         Iron { handler: handler, addr: None, protocol: None }
     }
-
-    fn bad_request(&self, mut http_res: HttpResponse<Fresh>) {
-        *http_res.status_mut() = status::BadRequest;
-
-        let http_res = match http_res.start() {
-            Ok(res) => res,
-            // Would like this to work, but if not *shrug*
-            Err(_) => return,
-        };
-
-        // We would like this to work, but can't do anything if it doesn't.
-        let _ = http_res.end();
-    }
 }
 
 impl<H: Handler> ::hyper::server::Handler for Iron<H> {
-    fn handle(&self, http_req: HttpRequest, http_res: HttpResponse<Fresh>) {
+    fn handle(&self, http_req: HttpRequest, mut http_res: HttpResponse<Fresh>) {
+        // Set some defaults in case request handler panics.
+        // This should not be necessary anymore once stdlib's catch_panic becomes stable.
+        *http_res.status_mut() = status::InternalServerError;
+
         // Create `Request` wrapper.
-        let mut req = match Request::from_http(http_req, self.addr.clone().unwrap(),
-                                               self.protocol.as_ref().unwrap()) {
-            Ok(req) => req,
+        match Request::from_http(http_req, self.addr.clone().unwrap(),
+                                 self.protocol.as_ref().unwrap()) {
+            Ok(mut req) => {
+                // Dispatch the request, write the response back to http_res
+                self.handler.handle(&mut req).unwrap_or_else(|e| {
+                    error!("Error handling:\n{:?}\nError was: {:?}", req, e.error);
+                    e.response
+                }).write_back(http_res)
+            },
             Err(e) => {
                 error!("Error creating request:\n    {}", e);
-                return self.bad_request(http_res);
-            }
-        };
-
-        // Dispatch the request
-        let res = self.handler.handle(&mut req);
-
-        match res {
-            // Write the response back to http_res
-            Ok(res) => res.write_back(http_res),
-            Err(e) => {
-                error!("Error handling:\n{:?}\nError was: {:?}", req, e.error);
-                e.response.write_back(http_res);
+                bad_request(http_res)
             }
         }
+    }
+}
+
+fn bad_request(mut http_res: HttpResponse<Fresh>) {
+    *http_res.status_mut() = status::BadRequest;
+
+    // Consume and flush the response.
+    // We would like this to work, but can't do anything if it doesn't.
+    if let Ok(res) = http_res.start()
+    {
+        let _ = res.end();
     }
 }
 

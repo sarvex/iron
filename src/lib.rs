@@ -8,7 +8,7 @@
 //!
 //! Iron is a high level web framework built in and for Rust, built on
 //! [hyper](https://github.com/hyperium/hyper). Iron is designed to take advantage
-//! of Rust's greatest features - it's excellent type system and its principled
+//! of Rust's greatest features - its excellent type system and principled
 //! approach to ownership in both single threaded and multi threaded contexts.
 //!
 //! Iron is highly concurrent and can scale horizontally on more machines behind a
@@ -19,11 +19,16 @@
 //! ## Hello World
 //!
 //! ```no_run
-//! # use iron::prelude::*;
-//! # use iron::status;
-//! Iron::new(|req: &mut Request| {
-//!     Ok(Response::with((status::Ok, "Hello World!")))
-//! }).http("localhost:3000").unwrap();
+//! extern crate iron;
+//!
+//! use iron::prelude::*;
+//! use iron::status;
+//!
+//! fn main() {
+//!     Iron::new(|_: &mut Request| {
+//!         Ok(Response::with((status::Ok, "Hello World!")))
+//!     }).http("localhost:3000").unwrap();
+//! }
 //! ```
 //!
 //! ## Design Philosophy
@@ -39,7 +44,7 @@
 //!
 //! Modifiers allow external code to manipulate Requests and Response in an ergonomic
 //! fashion, allowing third-party extensions to get the same treatment as modifiers
-//! defined in Iron itself. Plugins allow for lazily-evaluated, automically cached
+//! defined in Iron itself. Plugins allow for lazily-evaluated, automatically cached
 //! extensions to Requests and Responses, perfect for parsing, accessing, and
 //! otherwise lazily manipulating an http connection.
 //!
@@ -77,7 +82,7 @@ pub use middleware::{BeforeMiddleware, AfterMiddleware, AroundMiddleware,
                      Handler, Chain};
 
 // Server
-pub use iron::{Iron, Protocol};
+pub use iron::*;
 
 // Extensions
 pub use typemap::TypeMap;
@@ -105,7 +110,9 @@ pub mod error;
 /// The Result alias used throughout Iron and in clients of Iron.
 pub type IronResult<T> = Result<T, IronError>;
 
-/// A module meant to be glob imported when using Iron, for instance:
+/// A module meant to be glob imported when using Iron.
+///
+/// For instance:
 ///
 /// ```
 /// use iron::prelude::*;
@@ -134,6 +141,7 @@ pub mod modifier {
 pub mod status {
     pub use hyper::status::StatusCode as Status;
     pub use hyper::status::StatusCode::*;
+    pub use hyper::status::StatusClass;
 }
 
 /// HTTP Methods
@@ -154,5 +162,7 @@ pub mod request;
 // Request and Response Modifiers
 pub mod modifiers;
 
-mod iron;
+// Helper macros for error handling
+mod macros;
 
+mod iron;

@@ -1,55 +1,49 @@
-Iron [![Build Status](https://secure.travis-ci.org/iron/iron.png?branch=master)](https://travis-ci.org/iron/iron)
+Iron
 ====
+
+[![Build Status](https://secure.travis-ci.org/iron/iron.svg?branch=master)](https://travis-ci.org/iron/iron)
+[![Crates.io Status](http://meritbadge.herokuapp.com/iron)](https://crates.io/crates/iron)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://raw.githubusercontent.com/iron/iron/master/LICENSE)
 
 > Extensible, Concurrency Focused Web Development in Rust.
 
 ## Response Timer Example
 
 ```rust
+extern crate iron;
+extern crate time;
+
+use iron::prelude::*;
+use iron::{BeforeMiddleware, AfterMiddleware, typemap};
+use time::precise_time_ns;
+
 struct ResponseTime;
 
-impl Key for ResponseTime { type Value = u64 }
+impl typemap::Key for ResponseTime { type Value = u64; }
 
 impl BeforeMiddleware for ResponseTime {
     fn before(&self, req: &mut Request) -> IronResult<()> {
-        // Set the current time for retrieval later.
         req.extensions.insert::<ResponseTime>(precise_time_ns());
         Ok(())
-    }
-
-    fn catch(&self, req: &mut Request, _: &mut IronError) {
-        // On an error just do the same thing.
-        let _ = self.before(req);
     }
 }
 
 impl AfterMiddleware for ResponseTime {
     fn after(&self, req: &mut Request, res: Response) -> IronResult<Response> {
-        // Get the time we set earlier, compare it to now.
-        let delta = precise_time_ns() - *req.extensions.find::<ResponseTime>().unwrap();
+        let delta = precise_time_ns() - *req.extensions.get::<ResponseTime>().unwrap();
         println!("Request took: {} ms", (delta as f64) / 1000000.0);
         Ok(res)
     }
+}
 
-    fn catch(&self, req: &mut Request, _: &mut IronError) {
-        let delta = precise_time_ns() - *req.extensions.find::<ResponseTime>().unwrap();
-
-        // Print something different on errors.
-        println!("Request errored, and took: {} ms", (delta as f64) / 1000000.0);
-    }
+fn hello_world(_: &mut Request) -> IronResult<Response> {
+    Ok(Response::with((iron::status::Ok, "Hello World")))
 }
 
 fn main() {
-    // Create our Handler
-    let chain = Chain::new(|&: _: &mut Request| {
-        // Send back 200, "Hello World"
-        Ok(Response::with((status::Ok, "Hello World!")))
-    });
-
-    // Add our response timer.
-    chain.link((ResponseTime, ResponseTime));
-
-    // Kick off serving.
+    let mut chain = Chain::new(hello_world);
+    chain.link_before(ResponseTime);
+    chain.link_after(ResponseTime);
     Iron::new(chain).http("localhost:3000").unwrap();
 }
 ```
@@ -86,7 +80,7 @@ systems.
 
 Modifiers allow external code to manipulate Requests and Response in an ergonomic
 fashion, allowing third-party extensions to get the same treatment as modifiers
-defined in Iron itself. Plugins allow for lazily-evaluated, automically cached
+defined in Iron itself. Plugins allow for lazily-evaluated, automatically cached
 extensions to Requests and Responses, perfect for parsing, accessing, and
 otherwise lazily manipulating an http connection.
 
@@ -106,32 +100,33 @@ Iron averages [84,000+ requests per second for hello world](https://github.com/i
 and is mostly IO-bound, spending over 70% of its time in the kernel send-ing or
 recv-ing data.\*
 
-\* *Numbers from profiling on my OS X machine, your milage may vary.*
+\* *Numbers from profiling on my OS X machine, your mileage may vary.*
 
 ## Core Extensions
 
 Iron aims to fill a void in the Rust web stack - a high level framework that is
 *extensible* and makes organizing complex server code easy.
 
-Extensions are painless to build, and the [core bundle](https://github.com/iron/core)
+Extensions are painless to build, and the [core bundle](https://github.com/iron/common)
 already includes\*:
 
 Middleware:
 - [Routing](https://github.com/iron/router)
 - [Mounting](https://github.com/iron/mount)
-- [Static File Serving](https://github.com/iron/static)
+- [Static File Serving](https://github.com/iron/staticfile)
 - [Logging](https://github.com/iron/logger)
 
 Plugins:
 - [JSON Body Parsing](https://github.com/iron/body-parser)
 - [URL Encoded Data Parsing](https://github.com/iron/urlencoded)
+- [All-In-One (JSON, URL, & Form Data) Parameter Parsing](https://github.com/iron/params)
 - [Cookies](https://github.com/iron/cookie)
 - [Sessions](https://github.com/iron/session)
 
 Both:
 - [Shared Memory (also used for Plugin configuration)](https://github.com/iron/persistent)
 
-This allows for insanely flexible and powerful setups and allows nearly all
+This allows for extremely flexible and powerful setups and allows nearly all
 of Iron's features to be swappable - you can even change the middleware
 resolution algorithm by swapping in your own `Chain`.
 

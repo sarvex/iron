@@ -29,8 +29,8 @@
 //! For more information about the modifier system, see
 //! [rust-modifier](https://github.com/reem/rust-modifier).
 
-use std::io::{Read, Cursor};
 use std::fs::File;
+use std::io;
 use std::path::{Path, PathBuf};
 
 use modifier::Modifier;
@@ -40,6 +40,7 @@ use hyper::mime::Mime;
 use {status, headers, Request, Response, Set, Url};
 
 use mime_types;
+use response::{WriteBody, BodyReader};
 
 lazy_static! {
     static ref MIME_TYPES: mime_types::Types = mime_types::Types::new().unwrap();
@@ -52,10 +53,17 @@ impl Modifier<Response> for Mime {
     }
 }
 
-impl Modifier<Response> for Box<Read + Send> {
+impl Modifier<Response> for Box<WriteBody> {
     #[inline]
     fn modify(self, res: &mut Response) {
         res.body = Some(self);
+    }
+}
+
+impl <R: io::Read + Send + 'static> Modifier<Response> for BodyReader<R> {
+    #[inline]
+    fn modify(self, res: &mut Response) {
+        res.body = Some(Box::new(self));
     }
 }
 
@@ -70,14 +78,14 @@ impl Modifier<Response> for Vec<u8> {
     #[inline]
     fn modify(self, res: &mut Response) {
         res.headers.set(headers::ContentLength(self.len() as u64));
-        res.body = Some(Box::new(Cursor::new(self)) as Box<Read + Send>);
+        res.body = Some(Box::new(self));
     }
 }
 
 impl<'a> Modifier<Response> for &'a str {
     #[inline]
     fn modify(self, res: &mut Response) {
-        self.to_string().modify(res);
+        self.to_owned().modify(res);
     }
 }
 
@@ -95,7 +103,7 @@ impl Modifier<Response> for File {
             res.headers.set(headers::ContentLength(metadata.len()));
         }
 
-        res.body = Some(Box::new(self) as Box<Read + Send>);
+        res.body = Some(Box::new(self));
     }
 }
 
@@ -107,7 +115,7 @@ impl<'a> Modifier<Response> for &'a Path {
     /// Panics if there is no file at the passed-in Path.
     fn modify(self, res: &mut Response) {
         File::open(self)
-            .ok().expect(&format!("No such file: {}", self.display()))
+            .expect(&format!("No such file: {}", self.display()))
             .modify(res);
 
         let mime_str = MIME_TYPES.mime_for_path(self);
@@ -123,7 +131,7 @@ impl Modifier<Response> for PathBuf {
     /// Panics if there is no file at the passed-in Path.
     fn modify(self, res: &mut Response) {
         File::open(&self)
-            .ok().expect(&format!("No such file: {}", self.display()))
+            .expect(&format!("No such file: {}", self.display()))
             .modify(res);
     }
 }
@@ -161,3 +169,12 @@ impl Modifier<Response> for Redirect {
     }
 }
 
+/// A modifier for creating redirect responses.
+pub struct RedirectRaw(String);
+
+impl Modifier<Response> for RedirectRaw {
+    fn modify(self, res: &mut Response) {
+        let RedirectRaw(path) = self;
+        res.headers.set(headers::Location(path));
+    }
+}
