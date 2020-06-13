@@ -2,12 +2,14 @@ extern crate iron;
 extern crate time;
 
 use iron::prelude::*;
-use iron::{BeforeMiddleware, AfterMiddleware, typemap};
+use iron::{typemap, AfterMiddleware, BeforeMiddleware};
 use time::precise_time_ns;
 
 struct ResponseTime;
 
-impl typemap::Key for ResponseTime { type Value = u64; }
+impl typemap::Key for ResponseTime {
+    type Value = u64;
+}
 
 impl BeforeMiddleware for ResponseTime {
     fn before(&self, req: &mut Request) -> IronResult<()> {
@@ -25,12 +27,12 @@ impl AfterMiddleware for ResponseTime {
 }
 
 fn hello_world(_: &mut Request) -> IronResult<Response> {
-    Ok(Response::with((iron::status::Ok, "Hello World")))
+    Ok(Response::with((iron::StatusCode::OK, "Hello World")))
 }
 
 fn main() {
     let mut chain = Chain::new(hello_world);
     chain.link_before(ResponseTime);
     chain.link_after(ResponseTime);
-    Iron::new(chain).http("localhost:3000").unwrap();
+    Iron::new(chain).http("localhost:3000");
 }

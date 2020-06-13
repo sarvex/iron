@@ -19,12 +19,10 @@ deps/
 /bin/test-internal
 /bin/test-external
 /doc/
-/target/
+/target
 /build/
 /.rust/
 watch.sh
 rusti.sh
-/examples/*
-!/examples/*.rs
 Cargo.lock
 .cargo

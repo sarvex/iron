@@ -1,4 +1,8 @@
-#![doc(html_logo_url = "https://avatars0.githubusercontent.com/u/7853871?s=128", html_favicon_url = "https://avatars0.githubusercontent.com/u/7853871?s=256", html_root_url = "http://ironframework.io/core/iron")]
+#![doc(
+    html_logo_url = "https://avatars0.githubusercontent.com/u/7853871?s=128",
+    html_favicon_url = "https://avatars0.githubusercontent.com/u/7853871?s=256",
+    html_root_url = "http://ironframework.io/core/iron"
+)]
 #![cfg_attr(test, deny(warnings))]
 #![deny(missing_docs)]
 
@@ -22,12 +26,12 @@
 //! extern crate iron;
 //!
 //! use iron::prelude::*;
-//! use iron::status;
+//! use iron::StatusCode;
 //!
 //! fn main() {
 //!     Iron::new(|_: &mut Request| {
-//!         Ok(Response::with((status::Ok, "Hello World!")))
-//!     }).http("localhost:3000").unwrap();
+//!         Ok(Response::with((StatusCode::OK, "Hello World!")))
+//!     }).http("localhost:3000");
 //! }
 //! ```
 //!
@@ -60,26 +64,26 @@
 //!
 
 // Stdlib dependencies
-#[macro_use] extern crate log;
+#[macro_use]
+extern crate log;
 
 // Third party packages
+extern crate futures;
+extern crate futures_cpupool;
+extern crate http;
 extern crate hyper;
-extern crate typemap as tmap;
+pub extern crate mime;
+extern crate mime_guess;
 extern crate plugin;
-extern crate error as err;
-extern crate url;
-extern crate num_cpus;
-extern crate conduit_mime_types as mime_types;
-#[macro_use]
-extern crate lazy_static;
+extern crate typemap as tmap;
+extern crate url as url_ext;
 
 // Request + Response
 pub use request::{Request, Url};
 pub use response::Response;
 
 // Middleware system
-pub use middleware::{BeforeMiddleware, AfterMiddleware, AroundMiddleware,
-                     Handler, Chain};
+pub use middleware::{AfterMiddleware, AroundMiddleware, BeforeMiddleware, Chain, Handler};
 
 // Server
 pub use iron::*;
@@ -89,7 +93,6 @@ pub use typemap::TypeMap;
 
 // Headers
 pub use hyper::header as headers;
-pub use hyper::header::Headers;
 
 // Expose `Pluggable` as `Plugin` so users can do `use iron::Plugin`.
 pub use plugin::Pluggable as Plugin;
@@ -100,9 +103,6 @@ pub use modifier::Set;
 // Errors
 pub use error::Error;
 pub use error::IronError;
-
-// Mime types
-pub use hyper::mime;
 
 /// Iron's error type and associated utilities.
 pub mod error;
@@ -122,13 +122,13 @@ pub type IronResult<T> = Result<T, IronError>;
 /// of the convenience methods in Iron, as well as `Request`, `Response`
 /// `IronResult`, `IronError` and `Iron`.
 pub mod prelude {
-    pub use {Set, Plugin, Chain, Request, Response,
-             IronResult, IronError, Iron};
+    #[doc(no_inline)]
+    pub use {Chain, Iron, IronError, IronResult, Plugin, Request, Response, Set};
 }
 
-/// Re-exports from the TypeMap crate.
+/// Re-exports from the `TypeMap` crate.
 pub mod typemap {
-    pub use tmap::{TypeMap, Key};
+    pub use tmap::{Key, TypeMap};
 }
 
 /// Re-exports from the Modifier crate.
@@ -137,18 +137,17 @@ pub mod modifier {
     pub use self::modfier::*;
 }
 
-/// Status Codes
-pub mod status {
-    pub use hyper::status::StatusCode as Status;
-    pub use hyper::status::StatusCode::*;
-    pub use hyper::status::StatusClass;
+/// Re-exports from the url crate.
+pub mod url {
+    pub use url_ext::*;
 }
 
+/// Status Codes
+pub use http::StatusCode;
+
 /// HTTP Methods
-pub mod method {
-    pub use hyper::method::Method;
-    pub use hyper::method::Method::*;
-}
+pub use http::method;
+pub use http::Method;
 
 // Publicized to show the documentation
 pub mod middleware;

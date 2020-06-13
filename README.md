@@ -1,5 +1,4 @@
-Iron
-====
+# Iron
 
 [![Build Status](https://secure.travis-ci.org/iron/iron.svg?branch=master)](https://travis-ci.org/iron/iron)
 [![Crates.io Status](http://meritbadge.herokuapp.com/iron)](https://crates.io/crates/iron)
@@ -9,12 +8,14 @@ Iron
 
 ## Response Timer Example
 
+Note: This example works with the current `iron` code in this repository (master branch). If you are using `iron` 0.6 from crates.io, please refer to the [corresponding example](https://github.com/iron/iron/blob/0.6-maintenance/README.md) in the branch [0.6-maintenance](https://github.com/iron/iron/tree/0.6-maintenance).
+
 ```rust
 extern crate iron;
 extern crate time;
 
 use iron::prelude::*;
-use iron::{BeforeMiddleware, AfterMiddleware, typemap};
+use iron::{typemap, AfterMiddleware, BeforeMiddleware};
 use time::precise_time_ns;
 
 struct ResponseTime;
@@ -37,14 +38,14 @@ impl AfterMiddleware for ResponseTime {
 }
 
 fn hello_world(_: &mut Request) -> IronResult<Response> {
-    Ok(Response::with((iron::status::Ok, "Hello World")))
+    Ok(Response::with((iron::StatusCode::OK, "Hello World")))
 }
 
 fn main() {
     let mut chain = Chain::new(hello_world);
     chain.link_before(ResponseTime);
     chain.link_after(ResponseTime);
-    Iron::new(chain).http("localhost:3000").unwrap();
+    Iron::new(chain).http("localhost:3000");
 }
 ```
 
@@ -63,7 +64,7 @@ writes and locking in the core framework.
 Iron is 100% safe code:
 
 ```sh
-$ ack unsafe src | wc
+$ rg unsafe src | wc
        0       0       0
 ```
 
@@ -96,35 +97,36 @@ middleware. No plugins or middleware are bundled with Iron.
 
 ## Performance
 
-Iron averages [84,000+ requests per second for hello world](https://github.com/iron/iron/wiki/How-to-Benchmark-hello.rs-Example)
+Iron averages [72,000+ requests per second for hello world](https://github.com/iron/iron/wiki/How-to-Benchmark-hello.rs-Example)
 and is mostly IO-bound, spending over 70% of its time in the kernel send-ing or
 recv-ing data.\*
 
-\* *Numbers from profiling on my OS X machine, your mileage may vary.*
+\* _Numbers from profiling on my OS X machine, your mileage may vary._
 
 ## Core Extensions
 
 Iron aims to fill a void in the Rust web stack - a high level framework that is
-*extensible* and makes organizing complex server code easy.
+_extensible_ and makes organizing complex server code easy.
 
-Extensions are painless to build, and the [core bundle](https://github.com/iron/common)
-already includes\*:
+Extensions are painless to build. Some important ones are:
 
 Middleware:
+
 - [Routing](https://github.com/iron/router)
 - [Mounting](https://github.com/iron/mount)
 - [Static File Serving](https://github.com/iron/staticfile)
 - [Logging](https://github.com/iron/logger)
 
 Plugins:
+
 - [JSON Body Parsing](https://github.com/iron/body-parser)
 - [URL Encoded Data Parsing](https://github.com/iron/urlencoded)
 - [All-In-One (JSON, URL, & Form Data) Parameter Parsing](https://github.com/iron/params)
-- [Cookies](https://github.com/iron/cookie)
-- [Sessions](https://github.com/iron/session)
 
 Both:
+
 - [Shared Memory (also used for Plugin configuration)](https://github.com/iron/persistent)
+- [Sessions](https://github.com/iron/iron-sessionstorage)
 
 This allows for extremely flexible and powerful setups and allows nearly all
 of Iron's features to be swappable - you can even change the middleware
@@ -167,10 +169,10 @@ build a local copy.
 
 Check out the [examples](/examples) directory!
 
-You can run an individual example using `cargo run --example example-name`.
-Note that for benchmarking you should make sure to use the `--release` flag,
-which will cause cargo to compile the entire toolchain with optimizations.
-Without `--release` you will get truly sad numbers.
+You can run an individual example using `cargo run --bin example-name` inside
+the [examples](/examples) directory. Note that for benchmarking you should make
+sure to use the `--release` flag, which will cause cargo to compile the entire
+toolchain with optimizations. Without `--release` you will get truly sad numbers.
 
 ## Getting Help
 
@@ -218,4 +220,3 @@ SuprDewd (1)
 ## License
 
 MIT
-

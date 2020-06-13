@@ -1,16 +1,15 @@
-use std::error::Error as StdError;
 use std::fmt;
 
 use modifier::Modifier;
-use {Response};
+use Response;
 
-pub use err::Error;
-pub use hyper::Error as HttpError;
 pub use hyper::error::Result as HttpResult;
+pub use hyper::Error as HttpError;
+pub use std::error::Error;
 
 /// The type of Errors inside and when using Iron.
 ///
-/// IronError informs its receivers of two things:
+/// `IronError` informs its receivers of two things:
 ///
 /// * What went wrong
 /// * What to do about it
@@ -27,20 +26,20 @@ pub struct IronError {
     ///
     /// This can be layered and will be logged at the end of an errored
     /// request.
-    pub error: Box<Error + Send>,
+    pub error: Box<dyn Error + Send>,
 
     /// What to do about this error.
     ///
     /// This Response will be used when the error-handling flow finishes.
-    pub response: Response
+    pub response: Response,
 }
 
 impl IronError {
-    /// Create a new IronError from an error and a modifier.
-    pub fn new<E: Error, M: Modifier<Response>>(e: E, m: M) -> IronError {
+    /// Create a new `IronError` from an error and a modifier.
+    pub fn new<E: 'static + Error + Send, M: Modifier<Response>>(e: E, m: M) -> IronError {
         IronError {
             error: Box::new(e),
-            response: Response::with(m)
+            response: Response::with(m),
         }
     }
 }
@@ -51,13 +50,12 @@ impl fmt::Display for IronError {
     }
 }
 
-impl StdError for IronError {
+impl Error for IronError {
     fn description(&self) -> &str {
         self.error.description()
     }
 
-    fn cause(&self) -> Option<&StdError> {
-        self.error.cause()
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        self.error.source()
     }
 }
-
